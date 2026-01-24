@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import './MonthlyOverview.css';
+import { getBudgetOverview } from '../apis';
+import type { OverviewResponse, Expense } from '../apis';
 
 interface Transaction {
     id: string;
@@ -10,27 +12,59 @@ interface Transaction {
     note?: string;
 }
 
+const getCategoryIcon = (category: string): string => {
+    switch (category.toLowerCase()) {
+        case 'food': return '🍔';
+        case 'transport': return '🚕';
+        case 'fun': return '🎮';
+        default: return '📦';
+    }
+};
+
 const MonthlyOverview: React.FC = () => {
-    // Mock Data
-    const allowance = 3000;
-    const weeklyBudget = 750;
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [allowance, setAllowance] = useState(0);
+    const [weeklySpends, setWeeklySpends] = useState<{ week: number; spent: number; allocated: number }[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-    const weeklySpends = [
-        { week: 1, spent: 850 }, // Overspent
-        { week: 2, spent: 600 }, // Safe
-        { week: 3, spent: 450 }, // Safe (tight because of w1)
-        { week: 4, spent: 680 }, // Safe
-    ];
+    useEffect(() => {
+        fetchOverviewData();
+    }, []);
 
-    // Sample transaction data - in real app, this would come from state/props
-    const transactions: Transaction[] = [
-        { id: '1', amount: 250, category: 'Food', categoryIcon: '🍔', date: 'Today', note: 'Lunch' },
-        { id: '2', amount: 500, category: 'Travel', categoryIcon: '🚕', date: 'Today' },
-        { id: '3', amount: 120, category: 'Snacks', categoryIcon: '🍿', date: 'Yesterday' },
-        { id: '4', amount: 80, category: 'Transport', categoryIcon: '🚌', date: 'Yesterday', note: 'Bus fare' },
-        { id: '5', amount: 350, category: 'Fun', categoryIcon: '🎮', date: 'Jan 22' },
-        { id: '6', amount: 200, category: 'Food', categoryIcon: '🍔', date: 'Jan 21', note: 'Dinner' },
-    ];
+    const fetchOverviewData = async () => {
+        try {
+            setLoading(true);
+            const data: OverviewResponse = await getBudgetOverview();
+            
+            setAllowance(data.budget.allowance);
+            
+            // Map weeks data
+            const weeksData = data.budget.weeks.map((week) => ({
+                week: week.week + 1,
+                spent: week.spent,
+                allocated: week.allocated,
+            }));
+            setWeeklySpends(weeksData);
+            
+            // Map expenses to transactions
+            const txns: Transaction[] = data.budget.expenses.map((expense: Expense, index: number) => ({
+                id: `exp-${index}`,
+                amount: expense.amount,
+                category: expense.category.charAt(0).toUpperCase() + expense.category.slice(1),
+                categoryIcon: getCategoryIcon(expense.category),
+                date: expense.date ? new Date(expense.date).toLocaleDateString() : 'Recent',
+                note: undefined,
+            }));
+            setTransactions(txns);
+            
+            setError(null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load overview');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Group transactions by date
     const groupedTransactions = transactions.reduce((groups, transaction) => {
@@ -46,28 +80,50 @@ const MonthlyOverview: React.FC = () => {
     const totalSpent = weeklySpends.reduce((acc, curr) => acc + curr.spent, 0);
     const saved = allowance - totalSpent;
 
-    const getStatusColor = (spent: number) => {
-        if (spent > weeklyBudget) return '#FF006E'; // Vibrant Pink/Red
-        if (spent > weeklyBudget * 0.9) return '#FFD60A'; // Vibrant Yellow
+    const getStatusColor = (spent: number, allocated: number) => {
+        if (spent > allocated) return '#FF006E'; // Vibrant Pink/Red
+        if (spent > allocated * 0.9) return '#FFD60A'; // Vibrant Yellow
         return '#00D9FF'; // Vibrant Cyan
     };
 
     // Insight Logic
     const insightMessage = useMemo(() => {
-        const w1 = weeklySpends[0].spent;
-        const w3 = weeklySpends[2].spent;
-        const w2 = weeklySpends[1].spent;
-        const w4 = weeklySpends[3].spent;
+        if (weeklySpends.length < 4) return "Keep tracking to see your monthly patterns!";
+        
+        const w1 = weeklySpends[0];
+        const w2 = weeklySpends[1];
+        const w3 = weeklySpends[2];
+        const w4 = weeklySpends[3];
 
-        if (w1 > weeklyBudget && w3 < weeklyBudget) {
+        if (w1.spent > w1.allocated && w3.spent < w3.allocated) {
             return "Week 1 overspending caused tight Week 3.";
-        } else if (w2 < weeklyBudget && w4 < weeklyBudget) {
+        } else if (w2.spent < w2.allocated && w4.spent < w4.allocated) {
             return "Great job! Consistent saving in Week 2 & 4.";
-        } else if (weeklySpends.every(w => w.spent <= weeklyBudget)) {
+        } else if (weeklySpends.every(w => w.spent <= w.allocated)) {
             return "Steady spending! You stayed within budget all month.";
         }
         return "Keep tracking to see your monthly patterns!";
-    }, [weeklySpends, weeklyBudget]);
+    }, [weeklySpends]);
+
+    if (loading) {
+        return (
+            <div className="monthly-overview">
+                <div className="monthly-container">
+                    <p style={{ textAlign: 'center', padding: '2rem' }}>Loading overview...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="monthly-overview">
+                <div className="monthly-container">
+                    <p style={{ textAlign: 'center', padding: '2rem', color: '#f87171' }}>{error}</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="monthly-overview">
@@ -96,20 +152,24 @@ const MonthlyOverview: React.FC = () => {
                 <section className="monthly-chart-section">
                     <h2 className="section-title">Weekly Breakdown</h2>
                     <div className="chart-container">
-                        {weeklySpends.map((week) => (
-                            <div key={week.week} className="chart-bar-group">
-                                <div
-                                    className="chart-bar"
-                                    style={{
-                                        height: `${Math.min((week.spent / 1000) * 100, 100)}%`, // specific scaling for demo
-                                        backgroundColor: getStatusColor(week.spent)
-                                    }}
-                                >
-                                    <span className="chart-bar-value">₹{week.spent}</span>
+                        {weeklySpends.map((week) => {
+                            const maxSpent = Math.max(...weeklySpends.map(w => w.spent), week.allocated);
+                            const heightPercent = maxSpent > 0 ? (week.spent / maxSpent) * 100 : 0;
+                            return (
+                                <div key={week.week} className="chart-bar-group">
+                                    <div
+                                        className="chart-bar"
+                                        style={{
+                                            height: `${Math.max(heightPercent, 5)}%`,
+                                            backgroundColor: getStatusColor(week.spent, week.allocated)
+                                        }}
+                                    >
+                                        <span className="chart-bar-value">₹{week.spent}</span>
+                                    </div>
+                                    <span className="chart-label">W{week.week}</span>
                                 </div>
-                                <span className="chart-label">W{week.week}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </section>
 

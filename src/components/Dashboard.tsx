@@ -1,6 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
+import { 
+    getBudgetOverview, 
+    getCurrentWeekIndex, 
+    getSpendingStatus 
+} from '../apis';
+import type { OverviewResponse } from '../apis';
 
 interface EnvelopeData {
     week: number;
@@ -12,19 +18,48 @@ interface EnvelopeData {
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [envelopes, setEnvelopes] = useState<EnvelopeData[]>([]);
+    const [currentWeek, setCurrentWeek] = useState(1);
+    const [balanceLeft, setBalanceLeft] = useState(0);
+    const [daysLeft, setDaysLeft] = useState(1);
+    const [dailySafeSpend, setDailySafeSpend] = useState(0);
+    const [suggestFreeze, setSuggestFreeze] = useState(false);
 
-    // Sample data - in real app, this would come from state/props
-    const currentWeek = 2;
-    const balanceLeft = 420;
-    const daysLeft = 3;
-    const dailySafeSpend = Math.round(balanceLeft / daysLeft);
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
 
-    const envelopes: EnvelopeData[] = [
-        { week: 1, allocated: 750, spent: 750, remaining: 0, status: 'safe' },
-        { week: 2, allocated: 750, spent: 330, remaining: 420, status: 'warning' },
-        { week: 3, allocated: 750, spent: 0, remaining: 750, status: 'safe' },
-        { week: 4, allocated: 750, spent: 0, remaining: 750, status: 'safe' },
-    ];
+    const fetchDashboardData = async () => {
+        try {
+            setLoading(true);
+            const data: OverviewResponse = await getBudgetOverview();
+            
+            // Map API data to envelope format
+            const weekData: EnvelopeData[] = data.budget.weeks.map((week) => ({
+                week: week.week + 1, // API uses 0-indexed weeks
+                allocated: week.allocated,
+                spent: week.spent,
+                remaining: week.balance,
+                status: getSpendingStatus(week.spent, week.allocated),
+            }));
+            
+            setEnvelopes(weekData);
+            
+            const weekIndex = getCurrentWeekIndex();
+            setCurrentWeek(weekIndex + 1);
+            setBalanceLeft(data.budget.weeks[weekIndex]?.balance || 0);
+            setDaysLeft(data.burnRate.daysRemaining);
+            setDailySafeSpend(data.burnRate.safeDailySpend);
+            setSuggestFreeze(data.suggestFreeze);
+            setError(null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -42,6 +77,31 @@ const Dashboard: React.FC = () => {
     const handleLogExpense = () => {
         navigate('/log-expense');
     };
+
+    if (loading) {
+        return (
+            <div className="dashboard">
+                <div className="dashboard__container">
+                    <div className="dashboard__nudge">
+                        <span className="dashboard__nudge-text">Loading your budget...</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="dashboard">
+                <div className="dashboard__container">
+                    <div className="dashboard__nudge">
+                        <span className="dashboard__nudge-emoji">⚠️</span>
+                        <span className="dashboard__nudge-text">{error}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="dashboard">
@@ -61,6 +121,16 @@ const Dashboard: React.FC = () => {
                         <div className="dashboard__stat-value">{daysLeft}</div>
                     </div>
                 </div>
+
+                {/* Freeze Suggestion */}
+                {suggestFreeze && (
+                    <div className="dashboard__nudge" style={{ backgroundColor: '#fee2e2', borderColor: '#f87171' }}>
+                        <span className="dashboard__nudge-emoji">🥶</span>
+                        <span className="dashboard__nudge-text">
+                            Consider a spending freeze to stay on track!
+                        </span>
+                    </div>
+                )}
 
                 {/* Micro Nudge */}
                 <div className="dashboard__nudge">

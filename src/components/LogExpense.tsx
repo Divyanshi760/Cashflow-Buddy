@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './LogExpense.css';
 import NeoButton from './NeoButton';
+import { addExpense, getBudgetOverview, getCurrentWeekIndex } from '../apis';
 
 interface Category {
     id: string;
@@ -14,6 +15,9 @@ const LogExpense: React.FC = () => {
     const [amount, setAmount] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [note, setNote] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [weekBalance, setWeekBalance] = useState(0);
+    const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
     const categories: Category[] = [
         { id: 'food', icon: '🍔', label: 'Food' },
@@ -22,19 +26,39 @@ const LogExpense: React.FC = () => {
         { id: 'other', icon: '📦', label: 'Other' },
     ];
 
-    // Sample calculation - in real app, this would use actual week balance
-    const weekBalance = 420;
+    useEffect(() => {
+        fetchCurrentWeekBalance();
+    }, []);
+
+    const fetchCurrentWeekBalance = async () => {
+        try {
+            const data = await getBudgetOverview();
+            const weekIdx = getCurrentWeekIndex();
+            setCurrentWeekIndex(weekIdx);
+            setWeekBalance(data.budget.weeks[weekIdx]?.balance || 0);
+        } catch (err) {
+            console.error('Failed to fetch week balance:', err);
+        }
+    };
+
     const amountNum = parseFloat(amount) || 0;
     const remainingBalance = weekBalance - amountNum;
 
-    const handleAddExpense = () => {
+    const handleAddExpense = async () => {
         if (!amount || !selectedCategory) {
             alert('Please enter amount and select a category');
             return;
         }
-        console.log('Adding expense:', { amount, category: selectedCategory, note });
-        // In real app, this would save the expense
-        navigate('/dashboard');
+
+        try {
+            setLoading(true);
+            await addExpense(amountNum, selectedCategory, currentWeekIndex);
+            navigate('/dashboard');
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to add expense');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -95,15 +119,26 @@ const LogExpense: React.FC = () => {
 
                 {/* Smart Feedback */}
                 {amount && (
-                    <div className="log-expense__feedback">
-                        This leaves ₹{remainingBalance} for the week.
+                    <div className="log-expense__feedback" style={{ 
+                        backgroundColor: remainingBalance < 0 ? '#fee2e2' : '#fff',
+                        borderColor: remainingBalance < 0 ? '#f87171' : '#000'
+                    }}>
+                        {remainingBalance >= 0 
+                            ? `This leaves ₹${remainingBalance} for the week.`
+                            : `⚠️ This exceeds your weekly balance by ₹${Math.abs(remainingBalance)}!`
+                        }
                     </div>
                 )}
 
                 {/* CTA Button */}
                 <div className="log-expense__button-wrapper">
-                    <NeoButton variant="primary" size="large" onClick={handleAddExpense}>
-                        Add Expense
+                    <NeoButton 
+                        variant="primary" 
+                        size="large" 
+                        onClick={handleAddExpense}
+                        disabled={loading}
+                    >
+                        {loading ? 'Adding...' : 'Add Expense'}
                     </NeoButton>
                 </div>
             </div>

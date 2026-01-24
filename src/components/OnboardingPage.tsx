@@ -2,24 +2,42 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './OnboardingPage.css';
 import NeoButton from './NeoButton';
+import { initBudget } from '../apis';
 
 const OnboardingPage: React.FC = () => {
     const navigate = useNavigate();
     const [allowance, setAllowance] = useState('');
     const [customizeWeeks, setCustomizeWeeks] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleStartBudgeting = () => {
-        if (allowance) {
-            console.log('Starting budget with allowance:', allowance);
-            console.log('Customize weeks:', customizeWeeks);
-            // Navigate based on customize weeks preference
-            if (customizeWeeks) {
-                navigate('/weekly-split', { state: { allowance } });
-            } else {
-                navigate('/dashboard');
-            }
-        } else {
+    const handleStartBudgeting = async () => {
+        if (!allowance) {
             alert('Please enter your monthly allowance');
+            return;
+        }
+
+        const allowanceNum = parseFloat(allowance);
+        if (isNaN(allowanceNum) || allowanceNum <= 0) {
+            alert('Please enter a valid allowance amount');
+            return;
+        }
+
+        if (customizeWeeks) {
+            // Navigate to weekly split page without initializing budget yet
+            navigate('/weekly-split', { state: { allowance: allowanceNum } });
+        } else {
+            // Initialize budget with equal weekly splits
+            try {
+                setLoading(true);
+                setError(null);
+                await initBudget(allowanceNum);
+                navigate('/dashboard');
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to initialize budget');
+            } finally {
+                setLoading(false);
+            }
         }
     };
 
@@ -75,14 +93,22 @@ const OnboardingPage: React.FC = () => {
                         </label>
                     </div>
 
+                    {/* Error Message */}
+                    {error && (
+                        <div style={{ color: '#f87171', marginBottom: '1rem', textAlign: 'center' }}>
+                            {error}
+                        </div>
+                    )}
+
                     {/* CTA Button */}
                     <div className="onboarding__button-wrapper">
                         <NeoButton
                             variant="primary"
                             size="large"
                             onClick={handleStartBudgeting}
+                            disabled={loading}
                         >
-                            Start Budgeting
+                            {loading ? 'Setting up...' : 'Start Budgeting'}
                         </NeoButton>
                     </div>
                 </div>

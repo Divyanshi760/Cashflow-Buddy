@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './WeeklySplit.css';
 import NeoButton from './NeoButton';
+import { initBudget } from '../apis';
 
 interface WeekData {
     week: number;
@@ -12,6 +13,8 @@ interface WeekData {
 const WeeklySplit: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Get allowance from location state or use default
     const monthlyAllowance = location.state?.allowance ? parseFloat(location.state.allowance) : 4000;
@@ -71,9 +74,18 @@ const WeeklySplit: React.FC = () => {
         setWeeks(weeks.map(week => ({ ...week, amount: '' })));
     };
 
-    const handleSave = () => {
-        console.log('Saving weekly split:', weeks);
-        navigate('/dashboard');
+    const handleSave = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            const weeklyAllocations = weeks.map(week => parseFloat(week.amount) || 0);
+            await initBudget(monthlyAllowance, weeklyAllocations);
+            navigate('/dashboard');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to save budget');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const status = getStatus();
@@ -153,6 +165,13 @@ const WeeklySplit: React.FC = () => {
                     </button>
                 </div>
 
+                {/* Error Message */}
+                {error && (
+                    <div style={{ color: '#f87171', textAlign: 'center', marginBottom: '1rem' }}>
+                        {error}
+                    </div>
+                )}
+
                 {/* Visual Summary */}
                 <div className="weekly-split__summary">
                     <h3 className="weekly-split__summary-title">Budget Breakdown</h3>
@@ -181,9 +200,9 @@ const WeeklySplit: React.FC = () => {
                         variant="primary"
                         size="large"
                         onClick={handleSave}
-                        disabled={!canSave}
+                        disabled={!canSave || loading}
                     >
-                        🟦 SAVE WEEKLY SPLIT
+                        {loading ? 'Saving...' : '🟦 SAVE WEEKLY SPLIT'}
                     </NeoButton>
                 </div>
             </div>
