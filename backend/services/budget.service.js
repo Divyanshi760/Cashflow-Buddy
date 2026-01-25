@@ -36,20 +36,34 @@ function applyExpenseToWeeklyBudget(budget, amount, weekIndex) {
     throw new Error("Invalid week index");
   }
 
-  weeks[weekIndex].spent += amount;
-  weeks[weekIndex].balance -= amount;
+  let remaining = amount;
 
-  if (weeks[weekIndex].balance < 0) {
-    let deficit = Math.abs(weeks[weekIndex].balance);
-    weeks[weekIndex].balance = 0;
+  // 1️ Use current week first
+  const currentWeek = weeks[weekIndex];
+  const usedFromCurrent = Math.min(currentWeek.balance, remaining);
+  currentWeek.balance -= usedFromCurrent;
+  currentWeek.spent += usedFromCurrent;
+  remaining -= usedFromCurrent;
 
-    for (let i = weekIndex + 1; i < weeks.length && deficit > 0; i++) {
-      const deduction = Math.min(deficit, weeks[i].balance);
-      weeks[i].balance -= deduction;
-      weeks[i].allocated -= deduction;
-      deficit -= deduction;
-    }
+  // 2️ Pull from PREVIOUS weeks (backward)
+  for (let i = weekIndex - 1; i >= 0 && remaining > 0; i--) {
+    const prevWeek = weeks[i];
+    const used = Math.min(prevWeek.balance, remaining);
+    prevWeek.balance -= used;
+    prevWeek.spent += used;
+    remaining -= used;
+  }
 
+  // 3️ Pull from NEXT weeks (forward)
+  for (let i = weekIndex + 1; i < weeks.length && remaining > 0; i++) {
+    const nextWeek = weeks[i];
+    const used = Math.min(nextWeek.balance, remaining);
+    nextWeek.balance -= used;
+    nextWeek.allocated -= used; // important: reduce future allowance
+    remaining -= used;
+  }
+
+  if (remaining > 0) {
     budget.isOverdrawn = true;
   }
 
