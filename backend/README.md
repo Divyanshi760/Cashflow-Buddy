@@ -59,7 +59,20 @@ backend/
 
 ---
 
-## Running the Server
+## Cloning the repository
+
+Clone the repository:
+
+```bash
+git clone https://github.com/tiyasaurusrex/Cashflow-Buddy.git
+```
+
+Navigate to backend directory:
+
+```bash
+git cd Cashflow-Buddy/backend
+```
+## Running the server
 
 Install dependencies:
 
@@ -83,5 +96,5 @@ Future extention includes the following:
 * User authentication (JWT or OAuth)
 * Input validation middleware
 
-```
+
 
