@@ -4,6 +4,14 @@ const { applyExpenseToWeeklyBudget } = require("./budget.service");
 const ALLOWED_CATEGORIES = ["food", "transport", "fun", "other"];
 
 async function addExpense(userId, amount, category, weekIndex, note = '') {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Amount must be a positive number");
+  }
+
+  if (!Number.isInteger(weekIndex) || weekIndex < 0 || weekIndex > 3) {
+    throw new Error("Invalid week index");
+  }
+
   if (!ALLOWED_CATEGORIES.includes(category)) {
     throw new Error("Invalid expense category");
   }
