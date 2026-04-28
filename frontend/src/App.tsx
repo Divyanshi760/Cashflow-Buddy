@@ -12,7 +12,7 @@ import WeeklySplit from './components/WeeklySplit'
 import AuthPage from './components/AuthPage'
 import { logoutUser } from './apis'
 
-const GOOGLE_CLIENT_ID = '323999838773-563iargt4rtrtgq6dr0tqemc15d0nl8o.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 // Redirect to /login if no JWT is stored
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -67,6 +67,10 @@ function AppContent() {
 }
 
 function App() {
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error('Missing VITE_GOOGLE_CLIENT_ID. Set it in the repository root .env file.');
+  }
+
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <BrowserRouter>
