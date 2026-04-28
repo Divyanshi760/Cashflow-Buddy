@@ -17,8 +17,16 @@ const OnboardingPage: React.FC = () => {
             try {
                 await getBudgetOverview();
                 navigate('/dashboard', { replace: true });
-            } catch {
-                // 404 = no budget yet — show onboarding form
+            } catch (err) {
+                const message = err instanceof Error ? err.message : '';
+                if (message.includes('No budget found')) {
+                    // 404 = no budget yet — show onboarding form
+                    setError(null);
+                } else if (message) {
+                    setError(message);
+                } else {
+                    setError('Unable to connect. Please try again.');
+                }
                 setLoading(false);
             }
         };

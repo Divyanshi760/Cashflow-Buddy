@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './WarningScreen.css';
-import { getBudgetOverview } from '../apis';
+import { freezeSpendingFor24h, getBudgetOverview } from '../apis';
 import type { OverviewResponse } from '../apis';
 
 interface WarningScreenProps {
@@ -70,12 +70,11 @@ const WarningScreen: React.FC<WarningScreenProps> = ({ isOpen, onClose }) => {
     };
 
     const handleFreeze = () => {
-        console.log('Budget frozen');
+        freezeSpendingFor24h();
         onClose();
     };
 
     const handleIgnore = () => {
-        console.log('Warning ignored');
         onClose();
     };
 

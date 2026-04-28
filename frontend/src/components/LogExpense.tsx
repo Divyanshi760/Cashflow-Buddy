@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './LogExpense.css';
 import NeoButton from './NeoButton';
 import WarningScreen from './WarningScreen';
-import { addExpense, getBudgetOverview, getCurrentWeekIndex } from '../apis';
+import { addExpense, getBudgetOverview, getSpendingFreezeRemainingMs } from '../apis';
 
 interface Category {
     id: string;
@@ -35,7 +35,7 @@ const LogExpense: React.FC = () => {
     const fetchCurrentWeekBalance = async () => {
         try {
             const data = await getBudgetOverview();
-            const weekIdx = getCurrentWeekIndex();
+            const weekIdx = data.currentWeekIndex;
             setCurrentWeekIndex(weekIdx);
             setWeekBalance(data.budget.weeks[weekIdx]?.balance || 0);
         } catch (err) {
@@ -49,6 +49,13 @@ const LogExpense: React.FC = () => {
     const handleAddExpense = async () => {
         if (!amount || !selectedCategory) {
             alert('Please enter amount and select a category');
+            return;
+        }
+
+        const freezeRemainingMs = getSpendingFreezeRemainingMs();
+        if (freezeRemainingMs > 0) {
+            const hoursLeft = Math.ceil(freezeRemainingMs / (60 * 60 * 1000));
+            alert(`Spending is frozen for now. Try again in about ${hoursLeft} hour(s).`);
             return;
         }
 
