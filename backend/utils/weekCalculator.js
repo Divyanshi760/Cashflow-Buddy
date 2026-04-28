@@ -4,7 +4,7 @@ function getCurrentWeek(startDate, totalWeeks) {
   );
 
   // Ensure week stays within range
-  return Math.min(diff + 1, totalWeeks);
+  return Math.max(1, Math.min(diff + 1, totalWeeks));
 }
 
 module.exports = { getCurrentWeek };

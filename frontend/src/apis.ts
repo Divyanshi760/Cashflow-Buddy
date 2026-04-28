@@ -1,15 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const SPENDING_FREEZE_UNTIL_KEY = 'spendingFreezeUntil';
 
 // ===== AUTH HELPERS =====
 function getToken(): string | null {
     return localStorage.getItem('token');
-}
-
-function authHeaders(): Record<string, string> {
-    const token = getToken();
-    return token
-        ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-        : { 'Content-Type': 'application/json' };
 }
 
 export interface AuthUser {
@@ -40,9 +34,93 @@ export function logoutUser(): void {
     localStorage.removeItem('user');
 }
 
+function redirectToLogin(): void {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    if (window.location.pathname !== '/login') {
+        window.location.replace('/login');
+    }
+}
+
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+    try {
+        const data = await response.json();
+        return data?.error || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+async function requestJson<T>(
+    path: string,
+    init: RequestInit,
+    fallbackError: string,
+    withAuth = true,
+): Promise<T> {
+    const headers = new Headers(init.headers || {});
+    headers.set('Content-Type', 'application/json');
+
+    if (withAuth) {
+        const token = getToken();
+        if (token) {
+            headers.set('Authorization', `Bearer ${token}`);
+        }
+    }
+
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...init,
+        headers,
+    });
+
+    if (response.status === 401 && withAuth) {
+        logoutUser();
+        redirectToLogin();
+        throw new Error('Session expired. Please sign in again.');
+    }
+
+    if (!response.ok) {
+        throw new Error(await readErrorMessage(response, fallbackError));
+    }
+
+    return response.json() as Promise<T>;
+}
+
 export function getLoggedInUser(): AuthUser | null {
     const raw = localStorage.getItem('user');
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+
+    try {
+        return JSON.parse(raw) as AuthUser;
+    } catch {
+        localStorage.removeItem('user');
+        return null;
+    }
+}
+
+export function freezeSpendingFor24h(): void {
+    const freezeUntil = Date.now() + (24 * 60 * 60 * 1000);
+    localStorage.setItem(SPENDING_FREEZE_UNTIL_KEY, String(freezeUntil));
+}
+
+export function getSpendingFreezeRemainingMs(): number {
+    const raw = localStorage.getItem(SPENDING_FREEZE_UNTIL_KEY);
+    if (!raw) return 0;
+
+    const freezeUntil = Number(raw);
+    if (!Number.isFinite(freezeUntil)) {
+        localStorage.removeItem(SPENDING_FREEZE_UNTIL_KEY);
+        return 0;
+    }
+
+    const remaining = freezeUntil - Date.now();
+    if (remaining <= 0) {
+        localStorage.removeItem(SPENDING_FREEZE_UNTIL_KEY);
+        return 0;
+    }
+
+    return remaining;
 }
 
 
@@ -94,6 +172,7 @@ export interface OverviewResponse {
     burnRate: BurnRate;
     prediction: Prediction | null;
     suggestFreeze: boolean;
+    currentWeekIndex: number;
 }
 
 export interface InitBudgetRequest {
@@ -108,55 +187,31 @@ export interface AddExpenseRequest {
 }
 
 export async function initBudget(allowance: number, weeklyAllocations?: number[]): Promise<Budget> {
-    const response = await fetch(`${API_BASE_URL}/budget/init`, {
+    return requestJson<Budget>('/budget/init', {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify({
             allowance,
             weeklyAllocations,
         }),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to initialize budget');
-    }
-
-    return response.json();
+    }, 'Failed to initialize budget');
 }
 
 export async function getBudgetOverview(): Promise<OverviewResponse> {
-    const response = await fetch(`${API_BASE_URL}/budget/overview`, {
+    return requestJson<OverviewResponse>('/budget/overview', {
         method: 'GET',
-        headers: authHeaders(),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to fetch budget overview');
-    }
-
-    return response.json();
+    }, 'Failed to fetch budget overview');
 }
 
 export async function addExpense(amount: number, category: string, weekIndex: number, note?: string): Promise<Budget> {
-    const response = await fetch(`${API_BASE_URL}/expense/add`, {
+    return requestJson<Budget>('/expense/add', {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify({
             amount,
             category,
             weekIndex,
             note: note || '',
         }),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to add expense');
-    }
-
-    return response.json();
+    }, 'Failed to add expense');
 }
 
 export function getCurrentWeekIndex(): number {
@@ -196,45 +251,21 @@ export function getSpendingStatus(spent: number, allocated: number): 'safe' | 'w
 }
 
 export async function updateBudgetAllowance(newAllowance: number): Promise<Budget> {
-    const response = await fetch(`${API_BASE_URL}/budget/update-allowance`, {
+    return requestJson<Budget>('/budget/update-allowance', {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify({ allowance: newAllowance }),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update budget allowance');
-    }
-
-    return response.json();
+    }, 'Failed to update budget allowance');
 }
 
 export async function resetMonthData(): Promise<Budget> {
-    const response = await fetch(`${API_BASE_URL}/budget/reset`, {
+    return requestJson<Budget>('/budget/reset', {
         method: 'POST',
-        headers: authHeaders(),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to reset month data');
-    }
-
-    return response.json();
+    }, 'Failed to reset month data');
 }
 
 export async function updateMonthStartDate(monthStartDate: number): Promise<Budget> {
-    const response = await fetch(`${API_BASE_URL}/budget/month-start-date`, {
+    return requestJson<Budget>('/budget/month-start-date', {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify({ monthStartDate }),
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update month start date');
-    }
-
-    return response.json();
+    }, 'Failed to update month start date');
 }
