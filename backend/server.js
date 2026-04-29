@@ -28,13 +28,22 @@ function isLocalDevOrigin(origin) {
   }
 }
 
+function isVercelOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    return url.protocol === "https:" && url.hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) {
       return callback(null, true);
     }
 
-    if (configuredOrigins.includes(origin) || isLocalDevOrigin(origin)) {
+    if (configuredOrigins.includes(origin) || isLocalDevOrigin(origin) || isVercelOrigin(origin)) {
       return callback(null, true);
     }
 
